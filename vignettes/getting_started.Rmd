@@ -1,0 +1,96 @@
+---
+title: "Getting Started with the `controlcharts` package"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with the `controlcharts` package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Getting Started
+```{r setup, include=FALSE}
+set.seed(12324)
+```
+
+
+### Constructing SPC Charts
+
+Consider a basic time-series, comprised of two-years of monthly data:
+
+```{r spc}
+# Simulate 2 years of monthly data
+dat <- data.frame(
+  month = seq(as.Date("2024-01-01"), length.out = 24, by = "month"),
+  y = rnorm(24)
+)
+
+knitr::kable(head(dat))
+```
+
+By default, the `spc()` function will construct an `i`-chart (individuals chart; also referred to as an XmR-chart):
+
+```{r spc_plot}
+spc_chart <- controlcharts::spc(data = dat,
+                                numerators = y,
+                                keys = month)
+```
+
+The result of the `spc()` function is a list containing three elements:
+
+  - `static_plot`: a static SVG plot of the SPC chart
+  - `html_plot`: an HTML widget containing the interactive SPC chart (for use in Shiny/interactive contexts)
+  - `limits`: a data frame containing the calculated control limits
+
+```{r spc_plot_static}
+spc_chart$static_plot
+```
+
+```{r spc_plot_html, eval=FALSE}
+# If you are using an interactive environment, you can display the HTML widget:
+# spc_chart$html_plot
+```
+
+```{r spc_limits}
+# Display the control limits
+knitr::kable(head(spc_chart$limits), digits = 2)
+```
+
+### Funnel Plot
+
+The same interface is provided for funnel charts. For this example, consider proportion data recorded by 10 organisations:
+
+```{r funnel}
+# Simulate proportion data for 10 organisations
+denoms <- sample(100:200, 10)
+funnel_data <- data.frame(
+  organisation = letters[1:10],
+  numerators = rbinom(10, size = denoms, prob = 0.2),
+  denominators = denoms
+)
+
+knitr::kable(funnel_data)
+```
+
+For funnel plots, the default is a proportions (`PR`) chart:
+
+```{r funnel_plot}
+funnel_chart <- controlcharts::funnel(data = funnel_data,
+                                      numerators = numerators,
+                                      denominators = denominators,
+                                      keys = organisation)
+```
+
+```{r funnel_plot_static}
+funnel_chart$static_plot
+```
+
+```{r funnel_plot_limits}
+knitr::kable(funnel_chart$limits, digits = 2)
+```
