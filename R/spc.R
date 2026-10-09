@@ -9,10 +9,13 @@
 #' denominators for each category.
 #' @param groupings A vector or column name representing the grouping for
 #' each category.
+#' @param indicators A vector or list of vectors representing indicator
+#' categories for the summary table.
 #' @param xbar_sds A numeric vector or column name representing the x-bar
 #' and standard deviation values for each category.
-#' @param tooltips A vector or column name representing the tooltips for
-#' each category.
+#' @param tooltips A vector or column name, or a list of them, representing
+#' additional tooltips for each category. Each is labelled by its name in the
+#' list, or else by the expression supplied.
 #' @param labels A vector or column name representing the labels for each
 #' category.
 #' @param aggregations A list of aggregation function names for each field
@@ -42,6 +45,10 @@
 #'  \item \code{text_anchor}: Text anchor of the title (default: "middle")
 #'  \item \code{dominant_baseline}: Dominant baseline of the
 #' title (default: "hanging")
+#'  \item \code{subtitle}: Subtitle text, drawn below the title (default: NULL)
+#'  \item \code{subtitle_font_size}: Font size of the subtitle (default: "12px")
+#'  \item \code{subtitle_font_weight}: Font weight of the subtitle
+#' (default: "normal")
 #' }
 #' @param canvas_settings Optional list of settings for the canvas,
 #' see \code{spc_default_settings('canvas')} for valid options.
@@ -79,8 +86,8 @@
 #' }
 #'
 #' @return An object of class \code{controlchart} containing the
-#' interactive plot, static plot, limits data frame,
-#' and a function to save the plot.
+#' interactive plot, static plot, limits, and a function to save the plot.
+#' When indicators are supplied, limits are a named nested list of data frames.
 #'
 #' @export
 spc <- function(data,
@@ -88,6 +95,7 @@ spc <- function(data,
                 numerators,
                 denominators,
                 groupings,
+                indicators = NULL,
                 xbar_sds,
                 tooltips,
                 labels,
@@ -137,50 +145,61 @@ spc <- function(data,
     input_data <- data
   }
 
-  categories <- as.character(eval(substitute(keys), input_data, parent.frame()))
-  cat_order <- order(categories)
-  crosstalk_identities <- crosstalk_identities[cat_order]
-  input_data <- input_data[cat_order, ]
+  categories <- as.character(rlang::eval_tidy(rlang::enquo(keys), input_data))
+  indicator_values <- NULL
+  indicators_quo <- rlang::enquo(indicators)
+  if (!rlang::quo_is_null(indicators_quo)) {
+    indicator_values <- normalise_columns(indicators_quo, input_data, "indicators", "indicator")
+  }
+
+  ordering_values <- c(indicator_values, list(categories))
+  row_order <- do.call(order, ordering_values)
+  crosstalk_identities <- crosstalk_identities[row_order]
+  input_data <- input_data[row_order, ]
 
   input_settings <- list(
-    canvas = eval(substitute(canvas_settings), input_data, parent.frame()),
-    spc = eval(substitute(spc_settings), input_data, parent.frame()),
-    outliers = eval(substitute(outlier_settings), input_data, parent.frame()),
-    nhs_icons = eval(substitute(nhs_icon_settings), input_data, parent.frame()),
-    scatter = eval(substitute(scatter_settings), input_data, parent.frame()),
-    lines = eval(substitute(line_settings), input_data, parent.frame()),
-    x_axis = eval(substitute(x_axis_settings), input_data, parent.frame()),
-    y_axis = eval(substitute(y_axis_settings), input_data, parent.frame()),
-    dates = eval(substitute(date_settings), input_data, parent.frame()),
-    labels = eval(substitute(label_settings), input_data, parent.frame())
+    canvas = rlang::eval_tidy(rlang::enquo(canvas_settings), input_data),
+    spc = rlang::eval_tidy(rlang::enquo(spc_settings), input_data),
+    outliers = rlang::eval_tidy(rlang::enquo(outlier_settings), input_data),
+    nhs_icons = rlang::eval_tidy(rlang::enquo(nhs_icon_settings), input_data),
+    scatter = rlang::eval_tidy(rlang::enquo(scatter_settings), input_data),
+    lines = rlang::eval_tidy(rlang::enquo(line_settings), input_data),
+    x_axis = rlang::eval_tidy(rlang::enquo(x_axis_settings), input_data),
+    y_axis = rlang::eval_tidy(rlang::enquo(y_axis_settings), input_data),
+    dates = rlang::eval_tidy(rlang::enquo(date_settings), input_data),
+    labels = rlang::eval_tidy(rlang::enquo(label_settings), input_data)
   )
 
-  categories <- as.character(eval(substitute(keys), input_data, parent.frame()))
-  cat_order <- order(categories)
+  categories <- as.character(rlang::eval_tidy(rlang::enquo(keys), input_data))
+  cat_order <- seq_len(nrow(input_data))
   data_raw <- list(
-    crosstalk_identities = crosstalk_identities[cat_order],
-    categories = categories[cat_order],
-    numerators = eval(substitute(numerators), input_data, parent.frame())[cat_order]
+    crosstalk_identities = crosstalk_identities,
+    categories = categories,
+    numerators = rlang::eval_tidy(rlang::enquo(numerators), input_data)
   )
+
+  if (!is.null(indicator_values)) {
+    data_raw$indicators <- lapply(indicator_values, function(x) x[row_order])
+  }
 
   if (!missing(denominators)) {
-    data_raw$denominators <- as.numeric(eval(substitute(denominators), input_data, parent.frame()))[cat_order]
+    data_raw$denominators <- as.numeric(rlang::eval_tidy(rlang::enquo(denominators), input_data))
   }
 
   if (!missing(groupings)) {
-    data_raw$groupings <- as.character(eval(substitute(groupings), input_data, parent.frame()))[cat_order]
+    data_raw$groupings <- as.character(rlang::eval_tidy(rlang::enquo(groupings), input_data))
   }
 
   if (!missing(xbar_sds)) {
-    data_raw$xbar_sds <- as.numeric(eval(substitute(xbar_sds), input_data, parent.frame()))[cat_order]
+    data_raw$xbar_sds <- as.numeric(rlang::eval_tidy(rlang::enquo(xbar_sds), input_data))
   }
 
   if (!missing(tooltips)) {
-    data_raw$tooltips <- as.character(eval(substitute(tooltips), input_data, parent.frame()))[cat_order]
+    data_raw$tooltips <- normalise_columns(rlang::enquo(tooltips), input_data, "tooltips", "tooltip")
   }
 
   if (!missing(labels)) {
-    data_raw$labels <- as.character(eval(substitute(labels), input_data, parent.frame()))[cat_order]
+    data_raw$labels <- as.character(rlang::eval_tidy(rlang::enquo(labels), input_data))
   }
 
   create_controlchart("spc", data_raw, cat_order, is_crosstalk, crosstalk_group,
